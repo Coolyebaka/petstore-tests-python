@@ -52,9 +52,11 @@ def test_create_get_update_delete_pet_full_flow(api, pet_payload):
     # Delete
     deleted_resp = api.delete(f"/pet/{pet_id}")
     # Демостенд может вернуть 404, если кто-то уже удалил — учитываем это
-    assert deleted_resp.status_code in (200, 202, 404), (
-        f"[DELETE] expected 200/202/404, got {deleted_resp.status_code}: {deleted_resp.text}"
-    )
+    assert deleted_resp.status_code in (
+        200,
+        202,
+        404,
+    ), f"[DELETE] expected 200/202/404, got {deleted_resp.status_code}: {deleted_resp.text}"
 
     # Доп. проверка: питомец больше недоступен
     final_get = api.get(f"/pet/{pet_id}")
