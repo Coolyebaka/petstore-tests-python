@@ -1,62 +1,106 @@
-import os
-import uuid
-from typing import Callable, Dict
+from typing import Any, Dict, Generator, List
 
 import pytest
-from faker import Faker
 
-from src.api_client import ApiClient
-
-
-@pytest.fixture(scope="session")
-def api() -> ApiClient:
-    """Экземпляр ApiClient на всю сессию тестов."""
-    base_url = os.getenv("PETSTORE_BASE_URL")
-    return ApiClient(base_url=base_url)
+from api.client import APIClient
+from utils.data_generators import (
+    generate_order_data,
+    generate_pet_data,
+    generate_user_data,
+    generate_users_list,
+)
 
 
 @pytest.fixture(scope="session")
-def faker() -> Faker:
-    """Один Faker на все тесты."""
-    return Faker()
+def api_client() -> Generator[APIClient, None, None]:
+    client = APIClient()
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="session")
+def pet_client() -> Generator[APIClient, None, None]:
+    client = APIClient(base_path="/pet")
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="session")
+def store_client() -> Generator[APIClient, None, None]:
+    client = APIClient(base_path="/store")
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="session")
+def user_client() -> Generator[APIClient, None, None]:
+    client = APIClient(base_path="/user")
+    yield client
+    client.close()
 
 
 @pytest.fixture
-def unique_pet_id() -> int:
-    """Генерируем большой уникальный ID на основе UUID."""
-    return int(uuid.uuid4().int % 10**9)
+def pet_data() -> Dict[str, Any]:
+    return generate_pet_data()
 
 
 @pytest.fixture
-def pet_payload(unique_pet_id: int, faker: Faker) -> Dict:
-    """Базовый позитивный payload для питомца."""
-    return {
-        "id": unique_pet_id,
-        "name": faker.first_name(),
-        "status": "available",
-        "photoUrls": [faker.image_url()],
-        "category": {"id": 1, "name": faker.word()},
-        "tags": [{"id": 1, "name": faker.word()}],
-    }
+def user_data() -> Dict[str, Any]:
+    return generate_user_data()
 
 
 @pytest.fixture
-def pet_factory(api: ApiClient, faker: Faker) -> Callable[..., Dict]:
-    """Фабрика: создаёт питомца через API и возвращает payload."""
+def order_data() -> Dict[str, Any]:
+    return generate_order_data()
 
-    def _create_pet(**overrides: object) -> Dict:
-        payload: Dict[str, object] = {
-            "id": int(uuid.uuid4().int % 10**9),
-            "name": faker.first_name(),
-            "status": "available",
-            "photoUrls": [faker.image_url()],
-            "category": {"id": 1, "name": faker.word()},
-            "tags": [{"id": 1, "name": faker.word()}],
-        }
-        payload.update(overrides)
 
-        resp = api.post("/pet", json=payload)
-        assert resp.status_code in (200, 201), resp.text
-        return payload
+@pytest.fixture
+def users_list() -> List[Dict[str, Any]]:
+    return generate_users_list(3)
 
-    return _create_pet
+
+@pytest.fixture
+def created_pet(
+    pet_client: APIClient, pet_data: Dict[str, Any]
+) -> Generator[Dict[str, Any], None, None]:
+    response = pet_client.post(json_data=pet_data)
+    assert response.status_code == 200, f"Failed to create pet: {response.text}"
+    created_pet_data = response.json()
+
+    yield created_pet_data
+
+    try:
+        pet_client.delete(f"/{created_pet_data['id']}", expected_status=None)
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def created_user(
+    user_client: APIClient, user_data: Dict[str, Any]
+) -> Generator[Dict[str, Any], None, None]:
+    response = user_client.post(json_data=user_data)
+    assert response.status_code == 200, f"Failed to create user: {response.text}"
+
+    yield user_data
+
+    try:
+        user_client.delete(f"/{user_data['username']}", expected_status=None)
+    except Exception:
+        pass
+
+
+@pytest.fixture
+def created_order(
+    store_client: APIClient, order_data: Dict[str, Any]
+) -> Generator[Dict[str, Any], None, None]:
+    response = store_client.post("/order", json_data=order_data)
+    assert response.status_code == 200, f"Failed to create order: {response.text}"
+    created_order_data = response.json()
+
+    yield created_order_data
+
+    try:
+        store_client.delete(f"/order/{created_order_data['id']}", expected_status=None)
+    except Exception:
+        pass
